@@ -4,6 +4,7 @@
 package privatedns
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -35,9 +36,9 @@ func resourcePrivateDnsZoneVirtualNetworkLink() *pluginsdk.Resource {
 		}),
 
 		Timeouts: &pluginsdk.ResourceTimeout{
-			Create: pluginsdk.DefaultTimeout(30 * time.Minute),
-			Read:   pluginsdk.DefaultTimeout(5 * time.Minute),
-			Update: pluginsdk.DefaultTimeout(30 * time.Minute),
+			Create: pluginsdk.DefaultTimeout(60 * time.Minute),
+			Read:   pluginsdk.DefaultTimeout(30 * time.Minute),
+			Update: pluginsdk.DefaultTimeout(60 * time.Minute),
 			Delete: pluginsdk.DefaultTimeout(30 * time.Minute),
 		},
 
@@ -140,6 +141,9 @@ func resourcePrivateDnsZoneVirtualNetworkLinkRead(d *pluginsdk.ResourceData, met
 			d.SetId("")
 			return nil
 		}
+
+		err = GetRetryOnThrottling(ctx, id, client)
+
 		return fmt.Errorf("reading %s: %+v", *id, err)
 	}
 
@@ -208,5 +212,31 @@ func resourcePrivateDnsZoneVirtualNetworkLinkDelete(d *pluginsdk.ResourceData, m
 		return fmt.Errorf("waiting for deletion of %s: %+v", *id, err)
 	}
 
+	return nil
+}
+
+func GetRetryOnThrottling(ctx context.Context, id *virtualnetworklinks.VirtualNetworkLinkId, client *virtualnetworklinks.VirtualNetworkLinksClient) error {
+	stateConf := &pluginsdk.StateChangeConf{
+		Pending: []string{"Throttled"},
+		Target:  []string{"Available"},
+		Refresh: func() (interface{}, string, error) {
+			resp, err := client.Get(ctx, *id)
+			if err != nil {
+				if resp.HttpResponse.StatusCode == 429 {
+					return "Throttled", "Throttled", nil
+				}
+				return "", "error", err
+			}
+			return "Available", "Available", nil
+		},
+		Delay:                     30 * time.Second,
+		PollInterval:              3 * time.Minute,
+		ContinuousTargetOccurence: 10,
+		Timeout:                   30 * time.Minute,
+	}
+	_, err := stateConf.WaitForStateContext(ctx)
+	if err != nil {
+		return err
+	}
 	return nil
 }
