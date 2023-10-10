@@ -6,6 +6,7 @@ package cognitive
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/go-azure-helpers/lang/pointer"
 	"log"
 	"time"
 
@@ -162,6 +163,42 @@ func resourceCognitiveAccount() *pluginsdk.Resource {
 				Type:     pluginsdk.TypeBool,
 				Optional: true,
 				Default:  true,
+			},
+
+			"multi_region_location_setting": {
+				Type:     pluginsdk.TypeList,
+				Optional: true,
+				Elem: &pluginsdk.Resource{
+					Schema: map[string]*pluginsdk.Schema{
+						"region": {
+							Type:     pluginsdk.TypeList,
+							Optional: true,
+							Elem: &pluginsdk.Resource{
+								Schema: map[string]*pluginsdk.Schema{
+									"custom_subdomain": {
+										Type:         pluginsdk.TypeString,
+										Optional:     true,
+										ValidateFunc: validation.StringIsNotEmpty,
+									},
+									"name": {
+										Type:         pluginsdk.TypeString,
+										Required:     true,
+										ValidateFunc: validation.StringIsNotEmpty,
+									},
+									"value": {
+										Type:     pluginsdk.TypeFloat,
+										Required: true,
+									},
+								},
+							},
+						},
+						"routing_method": {
+							Type:         pluginsdk.TypeString,
+							Optional:     true,
+							ValidateFunc: validation.StringInSlice(cognitiveservicesaccounts.PossibleValuesForRoutingMethods(), false),
+						},
+					},
+				},
 			},
 
 			"metrics_advisor_aad_client_id": {
@@ -384,6 +421,7 @@ func resourceCognitiveAccountCreate(d *pluginsdk.ResourceData, meta interface{})
 			DisableLocalAuth:              utils.Bool(!d.Get("local_auth_enabled").(bool)),
 			DynamicThrottlingEnabled:      utils.Bool(d.Get("dynamic_throttling_enabled").(bool)),
 			Encryption:                    expandCognitiveAccountCustomerManagedKey(d.Get("customer_managed_key").([]interface{})),
+			Locations:                     expandCognitiveAccountMultiRegionLocationSettings(d.Get("multi_region_location_setting").([]interface{})),
 		},
 		Tags: tags.Expand(d.Get("tags").(map[string]interface{})),
 	}
@@ -469,6 +507,7 @@ func resourceCognitiveAccountUpdate(d *pluginsdk.ResourceData, meta interface{})
 			DisableLocalAuth:              utils.Bool(!d.Get("local_auth_enabled").(bool)),
 			DynamicThrottlingEnabled:      utils.Bool(d.Get("dynamic_throttling_enabled").(bool)),
 			Encryption:                    expandCognitiveAccountCustomerManagedKey(d.Get("customer_managed_key").([]interface{})),
+			Locations:                     expandCognitiveAccountMultiRegionLocationSettings(d.Get("multi_region_location_setting").([]interface{})),
 		},
 		Tags: tags.Expand(d.Get("tags").(map[string]interface{})),
 	}
@@ -557,6 +596,11 @@ func resourceCognitiveAccountRead(d *pluginsdk.ResourceData, meta interface{}) e
 			}
 			d.Set("endpoint", props.Endpoint)
 			d.Set("custom_subdomain_name", props.CustomSubDomainName)
+
+			if err := d.Set("multi_region_location_settings", flattenCognitiveMultiRegionLocationSettings(props.Locations)); err != nil {
+				return fmt.Errorf("setting `multi_region_location_settings` for Cognitive Account %q: %+v", id, err)
+			}
+
 			if err := d.Set("network_acls", flattenCognitiveAccountNetworkAcls(props.NetworkAcls)); err != nil {
 				return fmt.Errorf("setting `network_acls` for Cognitive Account %q: %+v", id, err)
 			}
@@ -679,6 +723,31 @@ func cognitiveAccountStateRefreshFunc(ctx context.Context, client *cognitiveserv
 		}
 		return nil, "", fmt.Errorf("unable to read provisioning state")
 	}
+}
+
+func expandCognitiveAccountMultiRegionLocationSettings(input []interface{}) *cognitiveservicesaccounts.MultiRegionSettings {
+	if len(input) == 0 {
+		return nil
+	}
+
+	value := input[0].(map[string]interface{})
+	region := value["region"].([]interface{})
+	regionSettings := make([]cognitiveservicesaccounts.RegionSetting, 0)
+
+	for _, r := range region {
+		regionValue := r.(map[string]interface{})
+		regionSettings = append(regionSettings, cognitiveservicesaccounts.RegionSetting{
+			Name:            pointer.To(regionValue["name"].(string)),
+			Customsubdomain: pointer.To(regionValue["custom_subdomain"].(string)),
+			Value:           pointer.To(regionValue["value"].(float64)),
+		})
+	}
+	results := cognitiveservicesaccounts.MultiRegionSettings{
+		Regions:       pointer.To(regionSettings),
+		RoutingMethod: pointer.To(cognitiveservicesaccounts.RoutingMethods(value["routing_method"].(string))),
+	}
+
+	return &results
 }
 
 func expandCognitiveAccountNetworkAcls(d *pluginsdk.ResourceData) (*cognitiveservicesaccounts.NetworkRuleSet, []string) {
@@ -825,6 +894,28 @@ func flattenCognitiveAccountNetworkAcls(input *cognitiveservicesaccounts.Network
 		"default_action":        input.DefaultAction,
 		"ip_rules":              pluginsdk.NewSet(pluginsdk.HashString, ipRules),
 		"virtual_network_rules": virtualNetworkRules,
+	}}
+}
+
+func flattenCognitiveMultiRegionLocationSettings(input *cognitiveservicesaccounts.MultiRegionSettings) []interface{} {
+	if input == nil {
+		return []interface{}{}
+	}
+
+	regionSettings := make([]interface{}, 0)
+	if input.Regions != nil {
+		for _, v := range *input.Regions {
+			regionSettings = append(regionSettings, map[string]interface{}{
+				"name":             v.Name,
+				"custom_subdomain": v.Customsubdomain,
+				"value":            v.Value,
+			})
+		}
+	}
+
+	return []interface{}{map[string]interface{}{
+		"region":         regionSettings,
+		"routing_method": input.RoutingMethod,
 	}}
 }
 
