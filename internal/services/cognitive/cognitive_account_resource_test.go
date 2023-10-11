@@ -389,6 +389,21 @@ func TestAccCognitiveAccount_customerManagedKey(t *testing.T) {
 	})
 }
 
+func TestAccCognitiveAccount_multiRegionLocationSettings(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_cognitive_deployment", "test")
+	r := CognitiveAccountResource{}
+
+	data.ResourceSequentialTest(t, r, []acceptance.TestStep{
+		{
+			Config: r.multiRegionLocationSettings(data),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
 func (t CognitiveAccountResource) Exists(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) (*bool, error) {
 	id, err := cognitiveservicesaccounts.ParseAccountID(state.ID)
 	if err != nil {
@@ -1108,4 +1123,33 @@ resource "azurerm_cognitive_account" "test" {
   }
 }
 `, data.RandomInteger, data.Locations.Secondary, data.RandomString, data.RandomString, data.RandomString, data.RandomInteger, data.RandomInteger)
+}
+
+func (t CognitiveAccountResource) multiRegionLocationSettings(data acceptance.TestData) string {
+	return fmt.Sprintf(`
+provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_resource_group" "test" {
+  name     = "acctestRG-cognitive-%d"
+  location = "%s"
+}
+
+resource "azurerm_cognitive_account" "test" {
+  name                = "acctestcogacc-%d"
+  location            = azurerm_resource_group.test.location
+  resource_group_name = azurerm_resource_group.test.name
+  kind                = "Emotion"
+  sku_name            = "S0"
+  multi_region_location_setting {
+   region {
+     custom_subdomain = "acctestcogacc-%d"
+     name             = "West US"
+     value            = 1
+   }
+   routing_method = "Performance"
+  }
+}
+`, data.RandomInteger, data.Locations.Primary, data.RandomInteger, data.RandomInteger)
 }
