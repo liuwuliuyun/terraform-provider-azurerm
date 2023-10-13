@@ -92,6 +92,21 @@ func TestAccCognitiveAccountCustomerManagedKey_update(t *testing.T) {
 	})
 }
 
+func TestAccCognitiveAccountCustomerManagedKey_systemAssignedIdentity(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_cognitive_account_customer_managed_key", "test")
+	r := CognitiveAccountCustomerManagedKeyResource{}
+
+	data.ResourceTest(t, r, []acceptance.TestStep{
+		{
+			Config: r.systemAssignedIdentity(data),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
 func (r CognitiveAccountCustomerManagedKeyResource) Exists(ctx context.Context, clients *clients.Client, state *pluginsdk.InstanceState) (*bool, error) {
 	id, err := cognitiveservicesaccounts.ParseAccountID(state.ID)
 	if err != nil {
@@ -237,4 +252,77 @@ resource "azurerm_key_vault_key" "test" {
   key_opts     = ["decrypt", "encrypt", "sign", "unwrapKey", "verify", "wrapKey"]
 }
 `, data.RandomInteger, data.Locations.Secondary, data.RandomString, data.RandomInteger, data.RandomInteger, data.RandomString, data.RandomString)
+}
+
+func (r CognitiveAccountCustomerManagedKeyResource) systemAssignedIdentity(data acceptance.TestData) string {
+	return fmt.Sprintf(`
+provider "azurerm" {
+  features {}
+}
+
+data "azurerm_client_config" "current" {
+}
+
+resource "azurerm_resource_group" "test" {
+  name     = "acctestRG-cognitive-%d"
+  location = "%s"
+}
+
+resource "azurerm_cognitive_account" "test" {
+  name                  = "acctest-cogacc-%d"
+  location              = azurerm_resource_group.test.location
+  resource_group_name   = azurerm_resource_group.test.name
+  kind = "FormRecognizer"
+  sku_name = "S0"
+  custom_subdomain_name = "acctest-cogacc-%d"
+  
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+resource "azurerm_key_vault" "test" {
+  name                     = "acctestkv%s"
+  location                 = azurerm_resource_group.test.location
+  resource_group_name      = azurerm_resource_group.test.name
+  tenant_id                = data.azurerm_client_config.current.tenant_id
+  sku_name                 = "standard"
+  purge_protection_enabled = true
+
+  access_policy {
+    tenant_id = azurerm_cognitive_account.test.identity.0.tenant_id
+    object_id = azurerm_cognitive_account.test.identity.0.principal_id
+    key_permissions = [
+      "Get", "Create", "List", "Restore", "Recover", "UnwrapKey", "WrapKey", "Purge", "Encrypt", "Decrypt", "Sign", "Verify"
+    ]
+    secret_permissions = [
+      "Get",
+    ]
+  }
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+    key_permissions = [
+      "Get", "Create", "Delete", "List", "Restore", "Recover", "UnwrapKey", "WrapKey", "Purge", "Encrypt", "Decrypt", "Sign", "Verify", "GetRotationPolicy"
+    ]
+    secret_permissions = [
+      "Get",
+    ]
+  }
+}
+
+resource "azurerm_key_vault_key" "test" {
+  name         = "acctestkvkey%s"
+  key_vault_id = azurerm_key_vault.test.id
+  key_type     = "RSA"
+  key_size     = 2048
+  key_opts     = ["decrypt", "encrypt", "sign", "unwrapKey", "verify", "wrapKey"]
+}
+
+resource "azurerm_cognitive_account_customer_managed_key" "test" {
+  cognitive_account_id = azurerm_cognitive_account.test.id
+  key_vault_key_id     = azurerm_key_vault_key.test.id
+}
+`, data.RandomInteger, data.Locations.Secondary, data.RandomInteger, data.RandomInteger, data.RandomString, data.RandomString)
 }

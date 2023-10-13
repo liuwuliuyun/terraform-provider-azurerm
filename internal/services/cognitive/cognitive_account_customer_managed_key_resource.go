@@ -4,6 +4,7 @@
 package cognitive
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -115,7 +116,7 @@ func resourceCognitiveAccountCustomerManagedKeyCreateUpdate(d *pluginsdk.Resourc
 	stateConf := &pluginsdk.StateChangeConf{
 		Pending:    []string{"Accepted"},
 		Target:     []string{"Succeeded"},
-		Refresh:    cognitiveAccountStateRefreshFunc(ctx, client, *id),
+		Refresh:    cognitiveAccountCMKStateRefreshFunc(ctx, client, *id),
 		MinTimeout: 15 * time.Second,
 		Timeout:    time.Until(timeout),
 	}
@@ -204,7 +205,7 @@ func resourceCognitiveAccountCustomerManagedKeyDelete(d *pluginsdk.ResourceData,
 	stateConf := &pluginsdk.StateChangeConf{
 		Pending:    []string{"Accepted"},
 		Target:     []string{"Succeeded"},
-		Refresh:    cognitiveAccountStateRefreshFunc(ctx, client, *id),
+		Refresh:    cognitiveAccountCMKStateRefreshFunc(ctx, client, *id),
 		MinTimeout: 15 * time.Second,
 		Timeout:    time.Until(timeout),
 	}
@@ -214,4 +215,18 @@ func resourceCognitiveAccountCustomerManagedKeyDelete(d *pluginsdk.ResourceData,
 	}
 
 	return nil
+}
+
+func cognitiveAccountCMKStateRefreshFunc(ctx context.Context, client *cognitiveservicesaccounts.CognitiveServicesAccountsClient, id cognitiveservicesaccounts.AccountId) pluginsdk.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		res, err := client.AccountsGet(ctx, id)
+		if err != nil {
+			return nil, "", fmt.Errorf("polling for %s: %+v", id, err)
+		}
+
+		if res.Model != nil && res.Model.Properties != nil && res.Model.Properties.ProvisioningState != nil && res.Model.Properties.Encryption != nil {
+			return res, string(*res.Model.Properties.ProvisioningState), nil
+		}
+		return nil, "", fmt.Errorf("unable to read provisioning state")
+	}
 }
