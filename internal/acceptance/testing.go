@@ -86,8 +86,8 @@ func GetAuthConfig(t *testing.T) *auth.Credentials {
 		ClientCertificatePassword: os.Getenv("ARM_CLIENT_CERTIFICATE_PASSWORD"),
 		ClientSecret:              os.Getenv("ARM_CLIENT_SECRET"),
 
-		EnableAuthenticatingUsingClientCertificate: true,
-		EnableAuthenticatingUsingClientSecret:      true,
+		EnableAuthenticatingUsingClientCertificate: false,
+		EnableAuthenticatingUsingClientSecret:      false,
 		EnableAuthenticatingUsingAzureCLI:          true,
 		EnableAuthenticatingUsingManagedIdentity:   false,
 		EnableAuthenticationUsingOIDC:              false,
