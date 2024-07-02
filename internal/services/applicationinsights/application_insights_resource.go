@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/go-azure-sdk/resource-manager/operationalinsights/2020-08-01/workspaces"
 	"github.com/hashicorp/terraform-provider-azurerm/helpers/tf"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/clients"
+	"github.com/hashicorp/terraform-provider-azurerm/internal/features"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/services/applicationinsights/migration"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/tf/pluginsdk"
 	"github.com/hashicorp/terraform-provider-azurerm/internal/tf/validation"
@@ -27,7 +28,7 @@ import (
 )
 
 func resourceApplicationInsights() *pluginsdk.Resource {
-	return &pluginsdk.Resource{
+	resource := &pluginsdk.Resource{
 		Create: resourceApplicationInsightsCreateUpdate,
 		Read:   resourceApplicationInsightsRead,
 		Update: resourceApplicationInsightsCreateUpdate,
@@ -38,9 +39,10 @@ func resourceApplicationInsights() *pluginsdk.Resource {
 			return err
 		}),
 
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		StateUpgraders: pluginsdk.StateUpgrades(map[int]pluginsdk.StateUpgrade{
 			0: migration.ComponentUpgradeV0ToV1{},
+			1: migration.ComponentUpgradeV1ToV2{},
 		}),
 
 		Timeouts: &pluginsdk.ResourceTimeout{
@@ -118,14 +120,13 @@ func resourceApplicationInsights() *pluginsdk.Resource {
 			"daily_data_cap_in_gb": {
 				Type:         pluginsdk.TypeFloat,
 				Optional:     true,
-				Computed:     true,
+				Default:      100,
 				ValidateFunc: validation.FloatAtLeast(0),
 			},
 
 			"daily_data_cap_notifications_disabled": {
 				Type:     pluginsdk.TypeBool,
 				Optional: true,
-				Computed: true,
 			},
 
 			"app_id": {
@@ -169,6 +170,21 @@ func resourceApplicationInsights() *pluginsdk.Resource {
 			},
 		},
 	}
+
+	if !features.FourPointOhBeta() {
+		resource.Schema["daily_data_cap_in_gb"] = &pluginsdk.Schema{
+			Type:         pluginsdk.TypeFloat,
+			Optional:     true,
+			Computed:     true,
+			ValidateFunc: validation.FloatAtLeast(0),
+		}
+		resource.Schema["daily_data_cap_notifications_disabled"] = &pluginsdk.Schema{
+			Type:     pluginsdk.TypeBool,
+			Optional: true,
+			Computed: true,
+		}
+	}
+	return resource
 }
 
 func resourceApplicationInsightsCreateUpdate(d *pluginsdk.ResourceData, meta interface{}) error {
