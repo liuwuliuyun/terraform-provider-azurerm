@@ -6,6 +6,7 @@ package cognitive
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/go-azure-helpers/lang/pointer"
 	"log"
 	"time"
 
@@ -275,6 +276,11 @@ func resourceCognitiveAccount() *pluginsdk.Resource {
 				Sensitive:    true,
 			},
 
+			"restore": {
+				Type:     pluginsdk.TypeBool,
+				Optional: true,
+			},
+
 			"storage": {
 				Type:     pluginsdk.TypeList,
 				Optional: true,
@@ -326,6 +332,7 @@ func resourceCognitiveAccountCreate(d *pluginsdk.ResourceData, meta interface{})
 	kind := d.Get("kind").(string)
 
 	id := cognitiveservicesaccounts.NewAccountID(subscriptionId, d.Get("resource_group_name").(string), d.Get("name").(string))
+	restore, ok := d.GetOk("restore")
 	if d.IsNewResource() {
 		existing, err := client.AccountsGet(ctx, id)
 		if err != nil {
@@ -335,7 +342,11 @@ func resourceCognitiveAccountCreate(d *pluginsdk.ResourceData, meta interface{})
 		}
 
 		if !response.WasNotFound(existing.HttpResponse) {
-			return tf.ImportAsExistsError("azurerm_cognitive_account", id.ID())
+			if ok && restore.(bool) {
+				log.Printf("[DEBUG] %s is being restored", id.AccountName)
+			} else {
+				return tf.ImportAsExistsError("azurerm_cognitive_account", id.ID())
+			}
 		}
 	}
 
@@ -387,6 +398,10 @@ func resourceCognitiveAccountCreate(d *pluginsdk.ResourceData, meta interface{})
 			Encryption:                    expandCognitiveAccountCustomerManagedKey(d.Get("customer_managed_key").([]interface{})),
 		},
 		Tags: tags.Expand(d.Get("tags").(map[string]interface{})),
+	}
+
+	if ok {
+		props.Properties.Restore = pointer.FromBool(restore.(bool))
 	}
 
 	identity, err := identity.ExpandSystemAndUserAssignedMap(d.Get("identity").([]interface{}))
@@ -472,6 +487,11 @@ func resourceCognitiveAccountUpdate(d *pluginsdk.ResourceData, meta interface{})
 		},
 		Tags: tags.Expand(d.Get("tags").(map[string]interface{})),
 	}
+
+	if restore, ok := d.GetOk("restore"); ok {
+		props.Properties.Restore = pointer.FromBool(restore.(bool))
+	}
+
 	identityRaw := d.Get("identity").([]interface{})
 	identity, err := identity.ExpandSystemAndUserAssignedMap(identityRaw)
 	if err != nil {
@@ -574,6 +594,10 @@ func resourceCognitiveAccountRead(d *pluginsdk.ResourceData, meta interface{}) e
 				publicNetworkAccess = *props.PublicNetworkAccess == cognitiveservicesaccounts.PublicNetworkAccessEnabled
 			}
 			d.Set("public_network_access_enabled", publicNetworkAccess)
+
+			if props.Restore != nil {
+				d.Set("restore", *props.Restore)
+			}
 
 			if err := d.Set("storage", flattenCognitiveAccountStorage(props.UserOwnedStorage)); err != nil {
 				return fmt.Errorf("setting `storages` for Cognitive Account %q: %+v", id, err)
