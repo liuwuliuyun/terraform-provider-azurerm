@@ -16,14 +16,19 @@ import (
 )
 
 func PreCheck(t *testing.T) {
+	useCli := os.Getenv("ARM_USE_CLI") == "true"
+
 	variables := []string{
-		"ARM_CLIENT_ID",
-		"ARM_CLIENT_SECRET",
 		"ARM_SUBSCRIPTION_ID",
 		"ARM_TENANT_ID",
 		"ARM_TEST_LOCATION",
 		"ARM_TEST_LOCATION_ALT",
 		"ARM_TEST_LOCATION_ALT2",
+	}
+
+	// ARM_CLIENT_ID and ARM_CLIENT_SECRET are only required when not using Azure CLI auth
+	if !useCli {
+		variables = append(variables, "ARM_CLIENT_ID", "ARM_CLIENT_SECRET")
 	}
 
 	for _, variable := range variables {
@@ -69,6 +74,8 @@ func GetAuthConfig(t *testing.T) *auth.Credentials {
 		return nil
 	}
 
+	useCli := os.Getenv("ARM_USE_CLI") == "true"
+
 	return &auth.Credentials{
 		Environment: *env,
 		ClientID:    os.Getenv("ARM_CLIENT_ID"),
@@ -80,7 +87,7 @@ func GetAuthConfig(t *testing.T) *auth.Credentials {
 
 		EnableAuthenticatingUsingClientCertificate: true,
 		EnableAuthenticatingUsingClientSecret:      true,
-		EnableAuthenticatingUsingAzureCLI:          false,
+		EnableAuthenticatingUsingAzureCLI:          useCli,
 		EnableAuthenticatingUsingManagedIdentity:   false,
 		EnableAuthenticationUsingOIDC:              false,
 		EnableAuthenticationUsingGitHubOIDC:        false,

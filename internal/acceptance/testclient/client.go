@@ -47,6 +47,8 @@ func Build() (*clients.Client, error) {
 			return nil, fmt.Errorf("building test client: %+v", err)
 		}
 
+		useCli := os.Getenv("ARM_USE_CLI") == "true"
+
 		authConfig := auth.Credentials{
 			Environment: *env,
 			ClientID:    os.Getenv("ARM_CLIENT_ID"),
@@ -58,7 +60,7 @@ func Build() (*clients.Client, error) {
 
 			EnableAuthenticatingUsingClientCertificate: true,
 			EnableAuthenticatingUsingClientSecret:      true,
-			EnableAuthenticatingUsingAzureCLI:          false,
+			EnableAuthenticatingUsingAzureCLI:          useCli,
 			EnableAuthenticatingUsingManagedIdentity:   false,
 			EnableAuthenticationUsingOIDC:              false,
 			EnableAuthenticationUsingGitHubOIDC:        false,
